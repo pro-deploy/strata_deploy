@@ -1,0 +1,20 @@
+[Unit]
+Description=Strata @DESCRIPTION@
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/strata
+ExecStart=@RUN@
+Restart=on-failure
+RestartSec=15
+TimeoutStartSec=1800
+TimeoutStopSec=90
+# the engines lock the experts they hand to the GPUs in RAM
+LimitMEMLOCK=infinity
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
