@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 # Interactive deployment of the Strata engine with one of two models (Qwen3.6-35B-A3B or Qwen3.8-Flash-Next) from the
 # kit in strata-2xa10. Asks for the server, the password, the model and the API port, validates every answer,
-# checks the server (GPUs, RAM, disk, running model services), then uploads the kit, which installs the Strata source of
-# the commit pinned in strata-2xa10/strata-source.env, runs install-server.sh there in the background, follows its log
-# and shows a loader until the API answers. Runs on macOS (bash 3.2) and Linux. The password is never written to disk or to the saved answers.
+# checks the server (GPUs, RAM, disk, running model services), then uploads the kit together with the Strata source kept
+# in this repository (strata/), runs install-server.sh there in the background, follows its log and shows a loader until
+# the API answers. Nothing of Strata is downloaded from elsewhere. Runs on macOS (bash 3.2) and Linux. The password is never written to disk or to the saved answers.
 set -euo pipefail
 
 ROOT=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 KIT=$ROOT/strata-2xa10
+SRC=$ROOT/strata
 REMOTE_KIT=/root/strata-kit
 SERVICE_NAME=strata
 STATE_DIR=${XDG_CONFIG_HOME:-$HOME/.config}/strata-deploy
@@ -22,8 +23,9 @@ die()  { printf '\n%sОшибка:%s %s\n' "$R" "$N" "$*" >&2; exit 1; }
 trim() { local s=$1; s=${s#"${s%%[![:space:]]*}"}; s=${s%"${s##*[![:space:]]}"}; printf '%s' "$s"; }
 
 [[ -t 0 ]] || die 'скрипт интерактивный, запустите его в терминале.'
-for tool in ssh tar curl; do command -v "$tool" >/dev/null || die "не найдена программа $tool."; done
+for tool in ssh tar gzip curl; do command -v "$tool" >/dev/null || die "не найдена программа $tool."; done
 [[ -f $KIT/install-server.sh && -f $KIT/strata-source.env ]] || die "не найден комплект установки в $KIT."
+[[ -x $SRC/setup.sh && -f $SRC/setup.py ]] || die "не найден исходный код Strata в $SRC."
 STRATA_REPO='' STRATA_COMMIT=''
 while IFS='=' read -r k v; do
   case $k in STRATA_REPO|STRATA_COMMIT) printf -v "$k" '%s' "$v";; esac
@@ -209,10 +211,10 @@ say '    2) Qwen3.8-Flash-Next (IQ3_XXS): 125 млрд параметров, с�
 MENU_MAX=2
 ask MODEL_CHOICE 'Выберите нейросеть' "$LAST_MODEL" is_menu 'Введите 1 или 2.'
 case $MODEL_CHOICE in
-  1) MODEL_TITLE='Qwen3.6-35B-A3B' FAMILY=qwen36 SIZE=UD-Q4_K_XL TAG=qwen36-UD-Q4_K_XL SERVED_NAME=qwen3.6-35b-a3b-ud-q4_k_xl
-     PARALLEL=4 DOWNLOAD_GB=23 DISK_NEED=45 RAM_PER=24;;
-  2) MODEL_TITLE='Qwen3.8-Flash-Next' FAMILY=qwen SIZE=IQ3_XXS TAG=IQ3_XXS SERVED_NAME=qwen3.8-flash-next-iq3_xxs
-     PARALLEL=4 DOWNLOAD_GB=76 DISK_NEED=170 RAM_PER=40;;
+  1) MODEL_TITLE='Qwen3.6-35B-A3B' FAMILY=qwen36 SIZE=UD-Q4_K_XL TAG=qwen36-UD-Q4_K_XL SERVED_NAME=qwen3.6-35b-a3b ALIAS=qwen3.6-35b-a3b-ud-q4_k_xl
+     PARALLEL=4 DOWNLOAD_GB=23 DISK_NEED=55 RAM_PER=24;;
+  2) MODEL_TITLE='Qwen3.8-Flash-Next' FAMILY=qwen SIZE=IQ3_XXS TAG=IQ3_XXS SERVED_NAME=qwen3.8-flash-next ALIAS=qwen3.8-flash-next-iq3_xxs
+     PARALLEL=4 DOWNLOAD_GB=76 DISK_NEED=180 RAM_PER=40;;
 esac
 
 REPLICAS=$GPU_COUNT
@@ -241,11 +243,11 @@ if [[ -n $CONFLICTS ]]; then
 fi
 
 # ---------- 5. Version record and summary ----------
-# The server gets the Strata source of the pinned commit; this repository's commit is recorded beside it, with
-# "-dirty" when the kit or deploy.sh has uncommitted edits ("unknown" outside a git checkout, e.g. a ZIP download).
+# The server gets the Strata source of strata/; this repository's commit identifies it, with "-dirty" when strata/, the
+# kit or deploy.sh has uncommitted edits ("unknown" outside a git checkout, e.g. a ZIP download).
 
 KIT_COMMIT=$(git -C "$ROOT" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
-if [[ $KIT_COMMIT != unknown && -n $(git -C "$ROOT" status --porcelain -- "$KIT" "$ROOT/deploy.sh" 2>/dev/null) ]]; then
+if [[ $KIT_COMMIT != unknown && -n $(git -C "$ROOT" status --porcelain -- "$SRC" "$KIT" "$ROOT/deploy.sh" 2>/dev/null) ]]; then
   KIT_COMMIT=$KIT_COMMIT-dirty
 fi
 STRATA_SHORT=${STRATA_COMMIT:0:12}
@@ -253,10 +255,10 @@ DEPLOYED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 head_ '5. Проверьте параметры'
 say "  Сервер:            $TARGET, порт SSH $SSH_PORT"
-say "  Движок:            Strata $STRATA_REPO@$STRATA_SHORT, готовый движок под видеокарты"
+say "  Движок:            Strata из этого репозитория (снимок $STRATA_REPO@$STRATA_SHORT), движок компилируется на сервере под его видеокарты"
 say "  Комплект:          strata_deploy $KIT_COMMIT"
 say "  Модель:            $MODEL_TITLE $SIZE, скачивание около $DOWNLOAD_GB ГБ"
-say "  Имя в API:         $SERVED_NAME"
+say "  Имя в API:         $SERVED_NAME (также принимается $ALIAS)"
 say "  Видеокарты:        $GPUS, по одной копии модели на каждой, до $PARALLEL запросов на копию"
 say "  Каталоги:          /opt/strata (программа), /opt/strata-data (модели)"
 say "  Служба systemd:    $SERVICE_NAME.service"
@@ -274,6 +276,7 @@ head_ '6. Установка'
 STAGE=$WORK/strata-kit
 mkdir -p "$STAGE"
 cp "$KIT/install-server.sh" "$KIT/strata.service" "$KIT/90-strata.conf" "$STAGE/"
+COPYFILE_DISABLE=1 tar -C "$SRC" --exclude .DS_Store -cf - . | gzip -1 > "$STAGE/strata-src.tar.gz"
 cat > "$STAGE/strata.env" <<EOF
 STRATA_REPO=$STRATA_REPO
 STRATA_COMMIT=$STRATA_COMMIT
@@ -281,6 +284,7 @@ FAMILY=$FAMILY
 SIZE=$SIZE
 TAG=$TAG
 SERVED_NAME=$SERVED_NAME
+ALIAS=$ALIAS
 SERVICE_NAME=$SERVICE_NAME
 PORT=$API_PORT
 GPUS=$GPUS
@@ -327,7 +331,7 @@ EOF
 
 COPYFILE_DISABLE=1 tar -C "$WORK" -czf - strata-kit \
   | rsh "$SUDO bash -c 'rm -rf $REMOTE_KIT && tar --warning=no-unknown-keyword -xzf - -C $(dirname "$REMOTE_KIT")'"
-ok "комплект загружен в $REMOTE_KIT."
+ok "комплект и исходный код Strata загружены в $REMOTE_KIT."
 
 if [[ -n $CONFLICTS ]]; then
   for unit in $CONFLICTS; do rsh "$SUDO systemctl disable --now $(printf '%q' "$unit")"; done
@@ -335,7 +339,7 @@ if [[ -n $CONFLICTS ]]; then
 fi
 
 rsh "$SUDO bash $REMOTE_KIT/start-install.sh"
-say '  Установка запущена на сервере. Первый раз она занимает от 20 минут до часа: Python, исходный код и движок Strata,'
+say '  Установка запущена на сервере. Первый раз она занимает от 30 минут до часа: Python, CUDA Toolkit, сборка движка,'
 say "  около $DOWNLOAD_GB ГБ модели, её подготовка и запуск. Ctrl+C прерывает только показ, установка продолжится."
 say "  Журнал на сервере: $REMOTE_KIT/install.log"
 say ''

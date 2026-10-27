@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# Run on the destination server as root: Linux x86_64, NVIDIA GPUs, systemd. deploy.sh uploads this kit and writes
-# strata.env (the model, the GPUs, the port and the pinned Strata commit).
-# Installs the Strata source of that commit from GitHub into /opt/strata with its ready-made engine, downloads the chosen model (pinned revision, SHA-256
+# Run on the destination server as root: Linux x86_64, NVIDIA GPUs, systemd. deploy.sh uploads this kit with the Strata
+# source of its repository (strata-src.tar.gz) and writes strata.env (the model, the GPUs, the port).
+# Installs that source into /opt/strata with its ready-made engine, downloads the chosen model (pinned revision, SHA-256
 # checked by setup), runs one replica per GPU behind one keyed API and starts it as a systemd service with autostart.
 # Re-running is safe: the API key, the model files and the run config's own additions are kept.
 set -euo pipefail
 HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=/dev/null
 source "$HERE/strata.env"
-: "${STRATA_REPO:?strata.env must set STRATA_REPO}" "${STRATA_COMMIT:?}" "${FAMILY:?}" "${SIZE:?}" "${TAG:?}" "${SERVICE_NAME:?}" "${PORT:?}" "${GPUS:?}" "${REPLICAS:?}" "${PARALLEL:?}"
+: "${STRATA_REPO:?strata.env must set STRATA_REPO}" "${STRATA_COMMIT:?}" "${FAMILY:?}" "${SIZE:?}" "${TAG:?}" "${SERVED_NAME:?}" "${ALIAS:?}" "${SERVICE_NAME:?}" "${PORT:?}" "${GPUS:?}" "${REPLICAS:?}" "${PARALLEL:?}"
 APP=/opt/strata
 DATA=/opt/strata-data
 KEY_FILE=/root/strata-api.key
@@ -27,9 +27,7 @@ fi
 
 # The source of the pinned commit replaces the previous one; .venv, the engine, the configs and the logs stay.
 mkdir -p "$APP" "$DATA"
-echo "Downloading the Strata source $STRATA_REPO@$STRATA_COMMIT..."
-curl -fsSL --retry 3 -o "$HERE/strata-src.tar.gz" "https://codeload.github.com/$STRATA_REPO/tar.gz/$STRATA_COMMIT"
-tar -xzf "$HERE/strata-src.tar.gz" -C "$APP" --strip-components=1
+tar --warning=no-unknown-keyword -xzf "$HERE/strata-src.tar.gz" -C "$APP"
 [[ -f $HERE/deploy-info ]] && install -m 644 "$HERE/deploy-info" "$APP/deploy-info"
 
 if [[ ! -s $KEY_FILE ]]; then
@@ -48,12 +46,15 @@ gpu_args=(--gpu "${GPUS%%,*}")
 cfg=$APP/strata-${TAG,,}.json
 run=$APP/run-${TAG,,}.sh
 [[ -f $cfg && -x $run ]] || { echo "setup did not write $cfg and $run." >&2; exit 1; }
-# One replica per card for every model. replica_load_tokens 20000: agents share a long system prompt, and with the
+# The model answers to a stable name without the quantization (clients keep their "model" when the size changes), and
+# to the size-specific name setup gives it as an alias. One replica per card for every model. replica_load_tokens 20000: agents share a long system prompt, and with the
 # default 3000 every request went to the replica that already held it (measured on 3 x A10 with Flash-Next).
-python3 - "$cfg" "$GPUS" "$REPLICAS" <<'PY'
+python3 - "$cfg" "$GPUS" "$REPLICAS" "$SERVED_NAME" "$ALIAS" <<'PY'
 import json, sys
-path, gpus, replicas = sys.argv[1], [int(g) for g in sys.argv[2].split(",")], int(sys.argv[3])
+path, gpus, replicas, name, alias = sys.argv[1], [int(g) for g in sys.argv[2].split(",")], int(sys.argv[3]), sys.argv[4], sys.argv[5]
 cfg = json.load(open(path))
+cfg["model_name"] = name
+cfg["aliases"] = [alias]
 cfg["gpu"] = gpus
 cfg["replicas"] = replicas
 cfg["replica_load_tokens"] = 20000
