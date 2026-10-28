@@ -1,0 +1,61 @@
+index, name, memory.total [MiB], pcie.link.width.current, driver_version
+0, NVIDIA A10, 23028 MiB, 16, 610.57.04
+1, NVIDIA A10, 23028 MiB, 16, 610.57.04
+Strata - Qwen3.8-Flash-Next on a normal PC (a GPU + system RAM + CPU)
+
+=== Step 1: checking your PC ===
+  Your NVIDIA GPUs:
+    GPU 0: NVIDIA A10, 22 GB VRAM - can be used
+    GPU 1: NVIDIA A10, 22 GB VRAM - can be used
+  [ok] GPU: NVIDIA A10, 22.5 GB VRAM, compute capability 8.6, driver 610.57.04
+  [ok] RAM: 126 GB
+  [ok] CPU: Intel(R) Xeon(R) Gold 6240R CPU @ 2.40GHz (AVX2)
+
+=== Step 2: your choices ===
+
+  Qwen3.6-35B-A3B - Qwen; GGUFs with the MTP layer by Unsloth: 35B mixture of experts with 3B active (256 experts, top-8): a smaller cousin of Qwen3.8-Flash-Next with the same tokenizer
+  [ok] model: Qwen3.6-35B-A3B
+  Its license: Apache 2.0: https://huggingface.co/Qwen/Qwen3.6-35B-A3B
+
+  1) UD-Q4_K_XL 4-bit (Unsloth Dynamic), the smallest; download 22.9 GB
+  2) UD-Q6_K_XL 6-bit (Unsloth Dynamic), closer to the full model; download 32.6 GB
+  3) Q8_0       8-bit, the closest to the full model; download 37.8 GB
+  [ok] size: UD-Q4_K_XL
+
+  Context length = how much text the model can see at once. Its cache takes 1.4 GB of VRAM per 32K tokens, room the experts would use:
+  1) 8K tokens
+  2) 32K tokens
+  3) 64K tokens   (recommended for your GPU)
+  4) 128K tokens
+  5) 200K tokens
+  6) 256K tokens
+  [ok] context: 65536 tokens
+  [ok] images: off
+
+=== Step 3: Python packages ===
+  Installing numpy, jinja2, regex, pyyaml, tqdm, requests, cmake, ninja, pillow, psutil ...
+  > /opt/strata/.venv/bin/python -m pip install --quiet --disable-pip-version-check numpy==2.5.3; python_version >= "3.12" numpy==2.4.6; python_version == "3.11" numpy==2.2.6; python_version < "3.11" jinja2==3.1.6 regex==2026.9.10 pyyaml==6.0.3 tqdm==4.70.1 requests==2.34.2 pillow==12.3.0 psutil==7.2.2 markupsafe==3.0.3 certifi==2026.7.22 charset-normalizer==3.5.1 idna==3.20 urllib3==2.8.0 colorama==0.4.6; sys_platform == "win32"
+
+STRATA_REPO=Niko1221/Strata
+STRATA_COMMIT=cbfd5b926b794b356195d3cb600191b0c3567540
+FAMILY=qwen36
+SIZE=UD-Q4_K_XL
+TAG=qwen36-UD-Q4_K_XL
+SERVED_NAME=qwen3.6-35b-a3b
+ALIAS=qwen3.6-35b-a3b-ud-q4_k_xl
+SERVICE_NAME=strata
+PORT=18080
+GPUS=0,1
+REPLICAS=2
+PARALLEL=4
+90-strata.conf
+deploy-info
+follow-log.sh
+install-server.sh
+install.log
+install.pid
+load-status.sh
+start-install.sh
+strata-src.tar.gz
+strata.env
+strata.service

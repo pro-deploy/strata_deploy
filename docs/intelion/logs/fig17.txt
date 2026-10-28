@@ -1,0 +1,19 @@
+$ <in>curl -H "Authorization: Bearer КЛЮЧ" http://185.182.108.28:18080/v1/models</in>
+{"object": "list", "data": [
+  {"id": "qwen3.6-35b-a3b", "object": "model", "status": {"value": "loaded"},
+   "meta": {"n_ctx": 65536}, "aliases": ["qwen3.6-35b-a3b-ud-q4_k_xl"], ...},
+  {"id": "qwen3.6-35b-a3b-ud-q4_k_xl", "alias_of": "qwen3.6-35b-a3b", ...}]}
+
+$ <in>curl http://185.182.108.28:18080/v1/models</in>          (без ключа)
+HTTP 401
+
+$ <in>curl .../v1/chat/completions ... "Привет! Ответь одним предложением: что ты умеешь?"</in>
+  "reasoning_content": "Here's a thinking process: 1. **Analyze User Input:** ..."  (3673 символа)
+  "content": "<hl>Я умею отвечать на вопросы, решать задачи, писать тексты и код, переводить</hl>
+             <hl>языки и помогать с самыми разными заданиями.</hl>"
+  usage: prompt 25, completion 933 токенов; 60,5 токена/с; время ответа 16,0 с
+
+$ <in>то же с "chat_template_kwargs": {"enable_thinking": false}</in>
+  "content": "<hl>Я большая языковая модель ... могу отвечать на вопросы, писать тексты,</hl>
+             <hl>переводить языки, создавать код и многое другое.</hl>"
+  usage: prompt 27, completion 36 токенов; 70,0 токена/с; время ответа 1,0 с

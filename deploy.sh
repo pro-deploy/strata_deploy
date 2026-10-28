@@ -32,6 +32,9 @@ while IFS='=' read -r k v; do
 done < "$KIT/strata-source.env"
 [[ $STRATA_REPO =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ && $STRATA_COMMIT =~ ^[0-9a-f]{40}$ ]] \
   || die "в $KIT/strata-source.env должны быть STRATA_REPO (владелец/название) и STRATA_COMMIT (полный SHA из 40 символов)."
+# The kit's release version (tag vX.Y.Z on the same commit); a ZIP download without git still carries it.
+KIT_VERSION=$(tr -d '[:space:]' < "$ROOT/VERSION" 2>/dev/null || true)
+[[ $KIT_VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "в $ROOT/VERSION должен быть номер версии вида 1.0.0."
 
 # ---------- validators: each takes the answer and returns 0 when its format is right ----------
 
@@ -98,7 +101,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-say "${B}Развёртывание сервера нейросети на движке Strata${N}"
+say "${B}Развёртывание сервера нейросети на движке Strata${N} (комплект strata_deploy v$KIT_VERSION)"
 say 'Значение в квадратных скобках подставляется, если просто нажать Enter.'
 
 # ---------- 1. Server and login ----------
@@ -247,7 +250,7 @@ fi
 # kit or deploy.sh has uncommitted edits ("unknown" outside a git checkout, e.g. a ZIP download).
 
 KIT_COMMIT=$(git -C "$ROOT" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)
-if [[ $KIT_COMMIT != unknown && -n $(git -C "$ROOT" status --porcelain -- "$SRC" "$KIT" "$ROOT/deploy.sh" 2>/dev/null) ]]; then
+if [[ $KIT_COMMIT != unknown && -n $(git -C "$ROOT" status --porcelain -- "$SRC" "$KIT" "$ROOT/deploy.sh" "$ROOT/VERSION" 2>/dev/null) ]]; then
   KIT_COMMIT=$KIT_COMMIT-dirty
 fi
 STRATA_SHORT=${STRATA_COMMIT:0:12}
@@ -256,7 +259,7 @@ DEPLOYED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 head_ '5. Проверьте параметры'
 say "  Сервер:            $TARGET, порт SSH $SSH_PORT"
 say "  Движок:            Strata из этого репозитория (снимок $STRATA_REPO@$STRATA_SHORT), движок компилируется на сервере под его видеокарты"
-say "  Комплект:          strata_deploy $KIT_COMMIT"
+say "  Комплект:          strata_deploy v$KIT_VERSION (коммит $KIT_COMMIT)"
 say "  Модель:            $MODEL_TITLE $SIZE, скачивание около $DOWNLOAD_GB ГБ"
 say "  Имя в API:         $SERVED_NAME (также принимается $ALIAS)"
 say "  Видеокарты:        $GPUS, по одной копии модели на каждой, до $PARALLEL запросов на копию"
@@ -293,6 +296,7 @@ PARALLEL=$PARALLEL
 EOF
 cat > "$STAGE/deploy-info" <<EOF
 deployed_at=$DEPLOYED_AT
+version=v$KIT_VERSION
 strata=$STRATA_REPO@$STRATA_COMMIT
 deploy_commit=$KIT_COMMIT
 model=$MODEL_TITLE $SIZE
@@ -414,4 +418,4 @@ say "  API-ключ хранится на сервере в /root/strata-api.key
 if confirm 'Показать API-ключ в терминале?' y; then say "  $API_KEY"; fi
 API_KEY=''
 say ''
-say "${G}Развёртывание завершено.${N} Запись о версии: /opt/strata/deploy-info на сервере (Strata $STRATA_SHORT, комплект $KIT_COMMIT, $DEPLOYED_AT)."
+say "${G}Развёртывание завершено.${N} Запись о версии: /opt/strata/deploy-info на сервере (комплект v$KIT_VERSION, коммит $KIT_COMMIT, Strata $STRATA_SHORT, $DEPLOYED_AT)."

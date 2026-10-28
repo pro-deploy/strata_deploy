@@ -1,0 +1,60 @@
+$ curl -H "Authorization: Bearer КЛЮЧ" http://185.182.108.28:18080/v1/models
+{
+    "object": "list",
+    "data": [
+        {
+            "id": "qwen3.6-35b-a3b",
+            "object": "model",
+            "status": {
+                "value": "loaded"
+            },
+            "meta": {
+                "n_ctx": 65536
+            },
+            "architecture": {
+                "input_modalities": [
+                    "text"
+                ],
+                "output_modalities": [
+                    "text"
+                ]
+            },
+            "aliases": [
+                "qwen3.6-35b-a3b-ud-q4_k_xl"
+            ]
+        },
+        {
+            "id": "qwen3.6-35b-a3b-ud-q4_k_xl",
+            "object": "model",
+            "status": {
+                "value": "loaded"
+            },
+            "meta": {
+                "n_ctx": 65536
+            },
+            "architecture": {
+                "input_modalities": [
+                    "text"
+                ],
+                "output_modalities": [
+                    "text"
+                ]
+            },
+            "aliases": [
+                "qwen3.6-35b-a3b-ud-q4_k_xl"
+            ],
+            "alias_of": "qwen3.6-35b-a3b"
+        }
+    ]
+}
+
+$ curl http://185.182.108.28:18080/v1/models   (без ключа)
+HTTP 401
+
+$ curl .../v1/chat/completions  (пробный запрос)
+real 12.16
+user 0.00
+sys 0.00
+model: qwen3.6-35b-a3b
+content: None
+usage: {'prompt_tokens': 25, 'completion_tokens': 400, 'total_tokens': 425, 'prompt_tokens_details': {'cached_tokens': 0}}

@@ -1,0 +1,34 @@
+6. Установка
+  <hl>готово:</hl> комплект и исходный код Strata загружены в /root/strata-kit.
+  Установка запущена на сервере. ... Ctrl+C прерывает только показ, установка продолжится.
+  Журнал на сервере: /root/strata-kit/install.log
+
+=== Step 1: checking your PC ===
+    GPU 0: NVIDIA A10, 22 GB VRAM - can be used
+    GPU 1: NVIDIA A10, 22 GB VRAM - can be used
+  <hl>[ok]</hl> GPU: NVIDIA A10, 22.5 GB VRAM, compute capability 8.6, driver 610.57.04
+  <hl>[ok]</hl> RAM: 126 GB
+  <hl>[ok]</hl> CPU: Intel(R) Xeon(R) Gold 6240R CPU @ 2.40GHz (AVX2)
+
+=== Step 2: your choices ===
+  <hl>[ok]</hl> model: Qwen3.6-35B-A3B
+  <hl>[ok]</hl> size: UD-Q4_K_XL
+  3) 64K tokens   (recommended for your GPU)
+  <hl>[ok]</hl> context: 65536 tokens
+  <hl>[ok]</hl> images: off
+
+=== Step 3: Python packages ===
+  <hl>[ok]</hl> numpy, jinja2, regex, pyyaml, tqdm, requests, cmake, ninja, pillow, psutil installed
+
+=== Step 4: the Strata engine ===
+  <hl>[ok]</hl> llama.cpp 3cf0325 (gguf-py, ggml, mtmd)
+  [!]  no ready-made engine at https://github.com/Niko1221/Strata/releases/latest/download/ (HTTP Error 404: Not Found): compiling instead
+  <hl>[ok]</hl> build tools present (CUDA 13.3)
+  ...
+/opt/strata/src/kernels/cuda/native_mmvq.cu(1257): warning #128-D: loop is not reachable
+  ...
+[163/163] Linking CXX executable strata
+  <hl>[ok]</hl> engine compiled: /opt/strata/engine/strata
+
+=== Step 5: downloading Qwen3.6-35B-A3B UD-Q4_K_XL ===
+  Qwen3.6-35B-A3B-UD-Q4_K_XL.gguf:  12.94 / 22.85 GB (57%)
