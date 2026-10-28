@@ -68,6 +68,38 @@ chmod 644 "/etc/systemd/system/$SERVICE_NAME.service"
 if [[ -d /etc/needrestart ]]; then
   install -D -m 644 "$HERE/90-strata.conf" /etc/needrestart/conf.d/90-strata.conf
 fi
+# Firewall: from outside only SSH and the API; everything else the image listens on (a metrics exporter, agents) is
+# closed. sshd's own ports are read from the running server, so a provider that forwards another port to 22 keeps
+# working. The kit's rules carry the comment "strata" and are rebuilt on every run; other rules are left as they are.
+if ! command -v ufw >/dev/null; then
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -q ufw
+fi
+ssh_ports=$( { echo "${SSH_PORT:-22}"; ss -Htlnp 2>/dev/null | awk '/"sshd"/ {n = split($4, a, ":"); print a[n]}'; } \
+  | grep -E '^[0-9]+$' | sort -un)
+ufw show added 2>/dev/null | grep "comment 'strata " | sed "s/^ufw //; s/ comment '.*'\$//" | while read -r rule; do
+  # shellcheck disable=SC2086 # the rule is ufw's own words, e.g. "allow from 198.51.100.7 to any port 18080 proto tcp"
+  ufw --force delete $rule >/dev/null || true
+done
+for p in $ssh_ports; do ufw allow "$p/tcp" comment 'strata ssh' >/dev/null; done
+if [[ -z ${API_FROM:-} ]]; then
+  ufw allow "$PORT/tcp" comment 'strata api' >/dev/null
+else
+  for src in $API_FROM ${DEPLOY_FROM:-}; do
+    ufw allow from "$src" to any port "$PORT" proto tcp comment 'strata api' >/dev/null
+  done
+fi
+ufw default deny incoming >/dev/null
+ufw default allow outgoing >/dev/null
+ufw --force enable >/dev/null
+echo "Firewall: open from outside: SSH $(echo $ssh_ports | tr ' ' ','), API $PORT from ${API_FROM:-anywhere}${API_FROM:+${DEPLOY_FROM:+ and $DEPLOY_FROM}}"
+
+# Password guessing on SSH: fail2ban bans an address after repeated failures (many images, Intelion's too, have it).
+if ! command -v fail2ban-client >/dev/null; then
+  DEBIAN_FRONTEND=noninteractive apt-get install -y -q fail2ban
+  printf '[sshd]\nenabled = true\nport = %s\n' "$(echo $ssh_ports | tr ' ' ',')" > /etc/fail2ban/jail.d/strata-sshd.local
+fi
+systemctl enable --now fail2ban >/dev/null 2>&1 || echo 'fail2ban did not start; SSH has no protection against password guessing.' >&2
+
 systemctl daemon-reload
 systemctl enable "$SERVICE_NAME.service"
 systemctl restart "$SERVICE_NAME.service"

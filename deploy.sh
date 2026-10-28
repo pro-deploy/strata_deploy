@@ -54,6 +54,17 @@ is_port()    { [[ $1 =~ ^[1-9][0-9]{0,4}$ ]] && (( $1 <= 65535 )); }
 is_api_port() { is_port "$1" && (( $1 >= 1024 )) && [[ $1 != "$SSH_PORT" ]]; }
 is_user()    { [[ $1 =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; }
 is_menu()    { [[ $1 =~ ^[1-9][0-9]*$ ]] && (( $1 <= MENU_MAX )); }
+# "все" (or "all", "*") opens the API to the whole internet; otherwise IPv4 addresses or IPv4/prefix networks, comma separated
+is_allow() {
+  case $1 in все|Все|ВСЕ|all|ALL|'*') return 0;; esac
+  local a ip bits
+  for a in ${1//,/ }; do
+    ip=${a%/*}; bits=${a#"$ip"}; bits=${bits#/}
+    is_ipv4 "$ip" || return 1
+    [[ -z $bits || ( $bits =~ ^[0-9]{1,2}$ && $bits -ge 8 && $bits -le 32 ) ]] || return 1
+  done
+  [[ -n ${1//[, ]/} ]]
+}
 is_yesno()   { case $1 in y|Y|yes|Yes|YES|д|Д|да|Да|ДА|n|N|no|No|NO|н|Н|нет|Нет|НЕТ) return 0;; esac; return 1; }
 
 # ask VAR "question" "default" validator "what the right format is"
@@ -84,10 +95,10 @@ confirm() {
 }
 
 # Saved answers from the previous run; only whitelisted keys are read, the password is never saved.
-LAST_HOST='' LAST_SSH_PORT=22 LAST_USER=root LAST_MODEL=1 LAST_API_PORT=18080
+LAST_HOST='' LAST_SSH_PORT=22 LAST_USER=root LAST_MODEL=1 LAST_API_PORT=18080 LAST_API_ALLOW=все
 if [[ -r $STATE ]]; then
   while IFS='=' read -r k v; do
-    case $k in LAST_HOST|LAST_SSH_PORT|LAST_USER|LAST_MODEL|LAST_API_PORT) printf -v "$k" '%s' "$v";; esac
+    case $k in LAST_HOST|LAST_SSH_PORT|LAST_USER|LAST_MODEL|LAST_API_PORT|LAST_API_ALLOW) printf -v "$k" '%s' "$v";; esac
   done < "$STATE"
 fi
 [[ $LAST_MODEL == 1 || $LAST_MODEL == 2 ]] || LAST_MODEL=1
@@ -236,6 +247,15 @@ fi
 
 head_ '4. Порт API'
 ask API_PORT 'Порт API' "$LAST_API_PORT" is_api_port "Целое число от 1024 до 65535, не совпадающее с портом SSH ($SSH_PORT)."
+# The server gets a firewall: from outside only SSH and the API port are open. The API can stay open to everyone (it
+# needs the key anyway) or be limited to the clients' addresses.
+say '  Доступ к API снаружи: «все» означает любой адрес в интернете (запросы всё равно требуют ключ), либо перечислите'
+say '  через запятую адреса или сети клиентов, например 203.0.113.10, 198.51.100.0/24. SSH остаётся открытым для всех.'
+ask API_ALLOW 'С каких адресов разрешить API' "$LAST_API_ALLOW" is_allow 'Введите «все» либо IPv4-адреса или сети вида 198.51.100.0/24 через запятую.'
+case $API_ALLOW in все|Все|ВСЕ|all|ALL|'*') API_ALLOW=все; API_FROM='';; *) API_FROM=$(printf '%s' "${API_ALLOW//,/ }" | xargs);; esac
+# The address this run connects from: when the API is limited, it is allowed too, so the check at the end can pass.
+DEPLOY_FROM=$(rsh 'printf "%s" "${SSH_CLIENT%% *}"' 2>/dev/null || true)
+is_ipv4 "$DEPLOY_FROM" || DEPLOY_FROM=''
 
 # Any other model service (an earlier vLLM deployment, another Strata unit) holds the GPUs and has to stop.
 CONFLICTS=$(printf '%s' "$UNITS" | awk -v keep="$SERVICE_NAME.service" 'NF && $1 != keep && $2 != "inactive" {print $1}')
@@ -266,12 +286,18 @@ say "  Видеокарты:        $GPUS, по одной копии модел
 say "  Каталоги:          /opt/strata (программа), /opt/strata-data (модели)"
 say "  Служба systemd:    $SERVICE_NAME.service"
 say "  API:               http://$HOST:$API_PORT/v1"
+if [[ -z $API_FROM ]]; then
+  say "  Доступ к API:      с любого адреса, только с ключом"
+else
+  say "  Доступ к API:      только с $API_FROM${DEPLOY_FROM:+ и с $DEPLOY_FROM (адрес этого запуска)}, только с ключом"
+fi
+say "  Защита сервера:    межсетевой экран ufw (снаружи открыты только SSH и порт $API_PORT), fail2ban против подбора пароля"
 confirm 'Начать развёртывание?' y || die 'развёртывание отменено, на сервере ничего не изменено.'
 
 # Remember the answers (never the password) for the next run.
 mkdir -p "$STATE_DIR"
 printf '%s\n' "LAST_HOST=$HOST" "LAST_SSH_PORT=$SSH_PORT" "LAST_USER=$SSH_USER" \
-  "LAST_MODEL=$MODEL_CHOICE" "LAST_API_PORT=$API_PORT" > "$STATE"
+  "LAST_MODEL=$MODEL_CHOICE" "LAST_API_PORT=$API_PORT" "LAST_API_ALLOW=$API_ALLOW" > "$STATE"
 
 # ---------- 6. Upload and install ----------
 
@@ -293,6 +319,9 @@ PORT=$API_PORT
 GPUS=$GPUS
 REPLICAS=$REPLICAS
 PARALLEL=$PARALLEL
+SSH_PORT=$SSH_PORT
+API_FROM="$API_FROM"
+DEPLOY_FROM=$DEPLOY_FROM
 EOF
 cat > "$STAGE/deploy-info" <<EOF
 deployed_at=$DEPLOYED_AT
@@ -304,6 +333,8 @@ served_name=$SERVED_NAME
 service=$SERVICE_NAME
 replicas=$REPLICAS on GPUs $GPUS
 port=$API_PORT
+api_from=${API_FROM:-any}
+firewall=ufw: ssh, api $API_PORT; fail2ban
 EOF
 # The installer runs detached on the server, so a dropped SSH connection does not stop it.
 cat > "$STAGE/start-install.sh" <<'EOF'
@@ -414,6 +445,8 @@ if [[ $keyed == 200 ]]; then
 else
   warn "сервер готов изнутри, но снаружи http://$HOST:$API_PORT недоступен (HTTP ${keyed:-нет ответа}). Откройте порт $API_PORT в межсетевом экране сервера или облака."
 fi
+fw=$(rsh "$SUDO grep '^Firewall:' $REMOTE_KIT/install.log" 2>/dev/null | sed 's/^Firewall: open from outside: //' || true)
+if [[ -n $fw ]]; then ok "межсетевой экран включён, снаружи открыты только: $fw."; else warn 'не удалось подтвердить, что межсетевой экран включён: проверьте командой ufw status на сервере.'; fi
 say "  API-ключ хранится на сервере в /root/strata-api.key."
 if confirm 'Показать API-ключ в терминале?' y; then say "  $API_KEY"; fi
 API_KEY=''
