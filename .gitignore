@@ -1,2 +1,3 @@
 .DS_Store
 docs/intelion/build/
+tests/firewall/fw-block.sh

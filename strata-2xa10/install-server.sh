@@ -76,7 +76,7 @@ if ! command -v ufw >/dev/null; then
 fi
 ssh_ports=$( { echo "${SSH_PORT:-22}"; ss -Htlnp 2>/dev/null | awk '/"sshd"/ {n = split($4, a, ":"); print a[n]}'; } \
   | grep -E '^[0-9]+$' | sort -un)
-ufw show added 2>/dev/null | grep "comment 'strata " | sed "s/^ufw //; s/ comment '.*'\$//" | while read -r rule; do
+ufw show added 2>/dev/null | sed -n "/ comment 'strata /{s/^ufw //; s/ comment '.*'\$//; p;}" | while read -r rule; do
   # shellcheck disable=SC2086 # the rule is ufw's own words, e.g. "allow from 198.51.100.7 to any port 18080 proto tcp"
   ufw --force delete $rule >/dev/null || true
 done

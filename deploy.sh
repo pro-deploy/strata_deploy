@@ -82,7 +82,7 @@ ask() {
       printf -v "$__var" '%s' "$__answer"
       return
     fi
-    if [[ -z $__answer ]]; then say "    Значение обязательно. $__hint"; else say "    Неверный формат: «$__answer». $__hint"; fi
+    if [[ -z $__answer ]]; then say "    Значение обязательно. $__hint"; else say "    Неверный формат: «${__answer}». $__hint"; fi
   done
 }
 
@@ -289,7 +289,7 @@ say "  API:               http://$HOST:$API_PORT/v1"
 if [[ -z $API_FROM ]]; then
   say "  Доступ к API:      с любого адреса, только с ключом"
 else
-  say "  Доступ к API:      только с $API_FROM${DEPLOY_FROM:+ и с $DEPLOY_FROM (адрес этого запуска)}, только с ключом"
+  say "  Доступ к API:      только с ${API_FROM// /, }${DEPLOY_FROM:+ и с $DEPLOY_FROM (адрес этого запуска)}, только с ключом"
 fi
 say "  Защита сервера:    межсетевой экран ufw (снаружи открыты только SSH и порт $API_PORT), fail2ban против подбора пароля"
 confirm 'Начать развёртывание?' y || die 'развёртывание отменено, на сервере ничего не изменено.'
