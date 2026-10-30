@@ -36,11 +36,13 @@ fi
 
 # Setup without questions: the ready-made engine for these cards, the model and its run config; nothing starts yet.
 # Qwen3.6 is set up on one card (its setup path is single-GPU), Flash-Next on all of them; the replicas below put one
-# engine on each card in both cases.
+# engine on each card in both cases. Images are on (--vision yes): the setup puts the encoder on the GPU on cards of
+# 23.5 GiB and more and on the CPU on smaller ones (a 24 GB card reports 22.5, so the A10 gets the CPU encoder and the
+# ~1.4 GB of VRAM stays with the experts); either way it downloads the pinned mmproj with a SHA-256 check.
 gpu_args=(--gpu "${GPUS%%,*}")
 [[ $FAMILY == qwen36 ]] || gpu_args=(--gpus "$GPUS" --replicas "$REPLICAS")
 (cd "$APP" && ./setup.sh --setup --family "$FAMILY" --model "$SIZE" "${gpu_args[@]}" --parallel "$PARALLEL" \
-  --vision no --host 0.0.0.0 --api-key "$(cat "$KEY_FILE")" --port "$PORT" --data-dir "$DATA" \
+  --vision yes --host 0.0.0.0 --api-key "$(cat "$KEY_FILE")" --port "$PORT" --data-dir "$DATA" \
   --no-browser --no-start --yes)
 
 cfg=$APP/strata-${TAG,,}.json
