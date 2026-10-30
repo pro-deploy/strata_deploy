@@ -60,6 +60,11 @@ cfg["aliases"] = [alias]
 cfg["gpu"] = gpus
 cfg["replicas"] = replicas
 cfg["replica_load_tokens"] = 20000
+# Flash-Next's resident expert arena is about 40 GiB. Separate copies can exhaust
+# 128 GiB RAM on a cold boot; Linux tmpfs lets replicas share the same weights.
+if "--ple-gguf" in cfg.get("args", []) and replicas > 1:
+    if "--shared-expert-arena" not in cfg["args"]:
+        cfg["args"] += ["--shared-expert-arena", "/dev/shm/strata-" + name + "-experts"]
 json.dump(cfg, open(path, "w"), indent=2)
 PY
 chmod 600 "$cfg"

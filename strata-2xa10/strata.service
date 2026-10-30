@@ -8,6 +8,8 @@ Type=simple
 User=root
 WorkingDirectory=/opt/strata
 ExecStart=@RUN@
+# Avoid overlapping the replicas' temporary allocations while loading weights.
+Environment=STRATA_REPLICA_START=serial
 Restart=on-failure
 RestartSec=15
 TimeoutStartSec=1800
